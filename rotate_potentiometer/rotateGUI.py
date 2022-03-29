@@ -4,6 +4,7 @@ import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+from matplotlib import gridspec
 import matplotlib.pyplot as plt
 from threading import Thread, Event
 import serial
@@ -24,13 +25,13 @@ class rot_gui:
         self.hold_clear = [False, False]
         self.release = [False, False]
         self.chosen_port = tk.StringVar()
-        self.chosen_port.set(self.ports[0])
+        self.chosen_port.set(self.ports[1])
         self.stop_data = Event()
         self.var1 = tk.IntVar()
         self.slide_val = tk.DoubleVar()
-        self.slide_val.set(1.5)
+        self.slide_val.set(400.0)
         self.slide_val2 = tk.DoubleVar()
-        self.slide_val2.set(1.5)
+        self.slide_val2.set(400.0)
         self.hold_time = tk.StringVar(value = '3')
         holdLabel = tk.Label(self.root, text = 'Hold Time (s):')
         holdLabel.grid(row = 1, column  = 1)
@@ -44,18 +45,20 @@ class rot_gui:
 
         self.fig = plt.figure(figsize = (8,8))
         self.fig.subplots_adjust(top=0.8)
-        self.ax = self.fig.add_subplot(211)
-        self.ax2 = self.fig.add_subplot(212)
+        spec = gridspec.GridSpec(ncols=1, nrows=2,  hspace=0.2, height_ratios=[1, 3])
+
+        self.ax = self.fig.add_subplot(spec[0])
+        self.ax2 = self.fig.add_subplot(spec[1])
 
         self.plot()
         self.canvas = FigureCanvasTkAgg(self.fig, master = self.root)
         self.canvas.get_tk_widget().grid(row = 4, column=1, columnspan = 3)
         self.canvas.draw()
 
-        self.slider = tk.Scale(self.root, from_=0.0, to=5.0, orient=tk.HORIZONTAL, variable = self.slide_val, length = 750, digits = 3, resolution = 0.01, command = self.slider_change, showvalue=False)
+        self.slider = tk.Scale(self.root, from_=0.0, to=1024.0, orient=tk.HORIZONTAL, variable = self.slide_val, length = 750, digits = 3, resolution = 0.01, command = self.slider_change, showvalue=False)
         self.slider.grid(row = 3, column = 1, columnspan= 4)
 
-        self.slider2 = tk.Scale(self.root, from_=5.0, to=0.0, variable = self.slide_val2, length = 750, digits = 3, resolution = 0.01, command = self.slider_change2, showvalue=False)
+        self.slider2 = tk.Scale(self.root, from_=1024.0, to=0.0, variable = self.slide_val2, length = 750, digits = 3, resolution = 0.01, command = self.slider_change2, showvalue=False)
         self.slider2.grid(row = 3, column = 5, rowspan = 2)
 
         startButton = tk.Button(self.root, text = 'Start', command = self.collect, height = 5, width = 15)
@@ -91,7 +94,7 @@ class rot_gui:
         self.root.destroy()     # close GUI
         sys.exit()              # stop script
 
-    def acquireData(self, com = 'COM5', baud = 9600):
+    def acquireData(self, com = 'COM4', baud = 9600):
         ser = serial.Serial(com, baudrate = baud)
 
         while(1):
@@ -99,11 +102,14 @@ class rot_gui:
                 reading = ser.readline().decode('utf-8').replace('\n', '').replace('\r', '').split(',')
                 if '\r' not in reading and '' not in reading:
                     reading = np.array(list(map(np.float32, reading)))
-                    # print(f'Reading: {reading}')
-                    self.data = reading[1:2]/1024*5
-                    # print(f'Data: {self.data}')
+                    print(f'Reading: {reading}')
+                    # print(reading[1],reading[2])
+                    # if len(reading) < 3:
+                    #     self.data = np.array([0, 0])
+                    self.data = reading[0:2]
+                    print(f'Data: {self.data}')
                     self.timer_threads()
-                    self.saved_data = np.vstack((self.saved_data, reading))
+                    # self.saved_data = np.vstack((self.saved_data, reading))
                     self.plot()                
                     self.canvas.draw()
             else:
@@ -115,8 +121,8 @@ class rot_gui:
         while(1):
             if (self.stop_data.is_set() == False):
                 self.data = np.random.randint(0,6, size=(2,))
-                # self.data = np.array([1.5, 1.2])
-                # self.timer_threads()
+                self.data = np.array([1.5, 1.2])
+                self.timer_threads()
                 self.plot() 
                 self.canvas.draw()
             else:
@@ -125,21 +131,23 @@ class rot_gui:
 
     def plot(self):
         self.ax.clear()
+        self.ax.title.set_text('Rotate')
         # color_map = ['g' if (a >= self.slide_val.get()*0.95 and a <= self.slide_val.get()*1.05) else 'y' for a in self.data]
         color_map = list(map(self.colormap, self.hold_clear, self.release, self.data))
         self.ax.barh([1], self.data[0], height=1, left=None, align='center',tick_label = ['1'], edgecolor = color_map[0], color = 'white', linewidth=5)
-        self.ax.set_xlim([0,5])
+        self.ax.set_xlim([0,1024])
         self.ax.set_ylim([0,2])
-        self.ax.axvline(self.slide_val.get(), color = 'r', linestyle = '-', linewidth = 16)
+        self.ax.axvline(self.slide_val.get(), color = 'r', linestyle = '-', linewidth = 20)
         self.ax.get_xaxis().set_visible(False)
         self.ax.get_yaxis().set_visible(False)
         
         self.ax2.clear()
+        self.ax2.title.set_text('Slide')
         # color_map = ['g' if (a >= self.slide_val.get()*0.95 and a <= self.slide_val.get()*1.05) else 'y' for a in self.data]
         color_map2 = list(map(self.colormap, self.hold_clear, self.release, self.data))
         self.ax2.bar([1], self.data[1], width=0.8, align='center',tick_label = ['1'], edgecolor = color_map[1], color = 'white', linewidth=5)
         self.ax2.set_xlim([0,2])
-        self.ax2.set_ylim([0,5])
+        self.ax2.set_ylim([0,1024])
         self.ax2.axhline(self.slide_val2.get(), color = 'r', linestyle = '-', linewidth = 16)
         self.ax2.get_xaxis().set_visible(False)
         self.ax2.get_yaxis().set_visible(False)
